@@ -37,6 +37,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development rules and de
 
 - Responsive live dashboard with KPI and operation filters
 - Product catalog, SKU search, opening stock, and reorder alerts
+- Global search across products, SKUs, partners, and operations
+- Product master-data editing with protected stock quantities
 - Receipt, delivery, transfer, and adjustment drafts
 - Multi-line operation editor with duplicate-product prevention
 - Searchable operation queue with enforced workflow transitions
@@ -44,7 +46,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development rules and de
 - Printable completed-operation documents with signature fields
 - Atomic operation validation with negative-stock protection
 - Immutable stock movement ledger
+- Searchable CSV ledger export
+- Live warehouse and stock-location administration
 - Local SQLite persistence and Turso-backed Vercel deployment support
+
+See [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the complete 5–6 minute demonstration flow.
 
 ## Next milestones
 

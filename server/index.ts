@@ -56,6 +56,29 @@ const productSchema = z.object({
   initialStock: z.number().min(0).default(0),
   locationId: z.number().int().positive(),
 });
+const productUpdateSchema = productSchema.omit({
+  initialStock: true,
+  locationId: true,
+});
+const warehouseSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(24)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+});
+const locationSchema = z.object({
+  warehouseId: z.number().int().positive(),
+  name: z.string().trim().min(2).max(80),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(32)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/),
+});
 
 function asyncRoute(
   handler: (req: Request, res: Response, next: NextFunction) => unknown,
@@ -82,6 +105,61 @@ app.get(
       ),
     ]);
     res.json({ locations, categories: categories.map((row) => row.category) });
+  }),
+);
+
+app.get(
+  "/api/settings",
+  asyncRoute(async (_req, res) => {
+    const [warehouses, locations] = await Promise.all([
+      queryAll(`
+        SELECT w.id, w.name, w.code, COUNT(DISTINCT l.id) AS locationCount,
+          COALESCE(SUM(sb.quantity), 0) AS stockUnits
+        FROM warehouses w
+        LEFT JOIN locations l ON l.warehouse_id = w.id
+        LEFT JOIN stock_balances sb ON sb.location_id = l.id
+        GROUP BY w.id ORDER BY w.name
+      `),
+      queryAll(`
+        SELECT l.id, l.name, l.code, l.warehouse_id AS warehouseId,
+          w.name AS warehouse, COUNT(DISTINCT sb.product_id) AS productCount,
+          COALESCE(SUM(sb.quantity), 0) AS stockUnits
+        FROM locations l
+        JOIN warehouses w ON w.id = l.warehouse_id
+        LEFT JOIN stock_balances sb ON sb.location_id = l.id
+        GROUP BY l.id ORDER BY w.name, l.name
+      `),
+    ]);
+    res.json({ warehouses, locations });
+  }),
+);
+
+app.post(
+  "/api/warehouses",
+  asyncRoute(async (req, res) => {
+    const input = warehouseSchema.parse(req.body);
+    const result = await execute(
+      "INSERT INTO warehouses (name, code) VALUES (?, ?)",
+      [input.name, input.code.toUpperCase()],
+    );
+    res.status(201).json({ id: Number(result.lastInsertRowid) });
+  }),
+);
+
+app.post(
+  "/api/locations",
+  asyncRoute(async (req, res) => {
+    const input = locationSchema.parse(req.body);
+    const warehouse = await queryOne<{ id: number }>(
+      "SELECT id FROM warehouses WHERE id = ?",
+      [input.warehouseId],
+    );
+    if (!warehouse) throw new Error("Selected warehouse was not found.");
+    const result = await execute(
+      "INSERT INTO locations (warehouse_id, name, code) VALUES (?, ?, ?)",
+      [input.warehouseId, input.name, input.code.toUpperCase()],
+    );
+    res.status(201).json({ id: Number(result.lastInsertRowid) });
   }),
 );
 
@@ -225,6 +303,31 @@ app.post(
       return id;
     });
     res.status(201).json({ id: productId });
+  }),
+);
+
+app.patch(
+  "/api/products/:id",
+  asyncRoute(async (req, res) => {
+    const id = z.coerce.number().int().positive().parse(req.params.id);
+    const input = productUpdateSchema.parse(req.body);
+    const result = await execute(
+      `UPDATE products
+       SET name = ?, sku = ?, category = ?, unit = ?, reorder_level = ?
+       WHERE id = ? AND active = 1`,
+      [
+        input.name,
+        input.sku.toUpperCase(),
+        input.category,
+        input.unit,
+        input.reorderLevel,
+        id,
+      ],
+    );
+    if (!result.rowsAffected) {
+      return res.status(404).json({ error: "Product not found." });
+    }
+    res.json({ id });
   }),
 );
 
@@ -504,19 +607,24 @@ if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (error instanceof z.ZodError) {
-    return res
-      .status(400)
-      .json({
-        error: "Please check the submitted values.",
-        details: error.flatten(),
-      });
+    return res.status(400).json({
+      error: "Please check the submitted values.",
+      details: error.flatten(),
+    });
   }
   const message =
     error instanceof Error ? error.message : "Unexpected server error.";
   const isConflict = message.includes("UNIQUE constraint failed");
+  const conflictMessage = message.includes("products.sku")
+    ? "That SKU already exists."
+    : message.includes("warehouses.code")
+      ? "That warehouse code already exists."
+      : message.includes("locations.code")
+        ? "That location code already exists."
+        : "That code already exists.";
   res
     .status(isConflict ? 409 : 400)
-    .json({ error: isConflict ? "That SKU already exists." : message });
+    .json({ error: isConflict ? conflictMessage : message });
 });
 
 export default app;

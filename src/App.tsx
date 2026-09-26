@@ -6,13 +6,15 @@ import {
   ArrowUpFromLine,
   Ban,
   Boxes,
-  ChevronDown,
   ClipboardCheck,
+  Download,
   History,
   Eye,
   LayoutDashboard,
   Menu,
+  MapPin,
   Package,
+  Pencil,
   Plus,
   Printer,
   Search,
@@ -37,6 +39,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useSearchParams,
 } from "react-router-dom";
 import { api } from "./api";
 import type {
@@ -102,7 +105,6 @@ function App() {
               <span>Active warehouse</span>
               <strong>Main Warehouse</strong>
             </div>
-            <ChevronDown size={15} />
           </div>
           <div className="profile">
             <div className="avatar">RK</div>
@@ -129,13 +131,7 @@ function App() {
           >
             <Menu size={21} />
           </button>
-          <div className="global-search">
-            <Search size={18} />
-            <input
-              aria-label="Global search"
-              placeholder="Search products, SKUs or operations..."
-            />
-          </div>
+          <GlobalSearch />
           <div className="live-pill">
             <span className="live-dot" />
             Live inventory
@@ -147,10 +143,137 @@ function App() {
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/operations" element={<OperationsPage />} />
             <Route path="/ledger" element={<LedgerPage />} />
-            <Route path="/settings" element={<PlaceholderPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </div>
       </main>
+    </div>
+  );
+}
+
+function GlobalSearch() {
+  const [query, setQuery] = useState("");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [operations, setOperations] = useState<Operation[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const value = query.trim();
+    if (value.length < 2) {
+      setProducts([]);
+      setOperations([]);
+      setOpen(false);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      try {
+        const encoded = encodeURIComponent(value);
+        const [productResults, operationResults] = await Promise.all([
+          api<Product[]>(`/api/products?q=${encoded}`),
+          api<Operation[]>(`/api/operations?q=${encoded}`),
+        ]);
+        if (active) {
+          setProducts(productResults.slice(0, 4));
+          setOperations(operationResults.slice(0, 4));
+          setOpen(true);
+        }
+      } catch {
+        if (active) {
+          setProducts([]);
+          setOperations([]);
+          setOpen(true);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
+  const choose = (path: string) => {
+    setOpen(false);
+    setQuery("");
+    navigate(path);
+  };
+
+  return (
+    <div
+      className="global-search-shell"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      <div className="global-search">
+        <Search size={18} />
+        <input
+          aria-label="Global search"
+          placeholder="Search products, SKUs or operations..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onFocus={() => query.trim().length >= 2 && setOpen(true)}
+        />
+        {loading && <span className="search-spinner" />}
+      </div>
+      {open && (
+        <div className="search-results">
+          {products.length > 0 && (
+            <div className="search-group">
+              <span>Products</span>
+              {products.map((product) => (
+                <button
+                  key={`product-${product.id}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() =>
+                    choose(`/products?q=${encodeURIComponent(product.sku)}`)
+                  }
+                >
+                  <Package size={15} />
+                  <div>
+                    <strong>{product.name}</strong>
+                    <small>{product.sku}</small>
+                  </div>
+                  <b>{formatNumber(product.quantity)}</b>
+                </button>
+              ))}
+            </div>
+          )}
+          {operations.length > 0 && (
+            <div className="search-group">
+              <span>Operations</span>
+              {operations.map((operation) => (
+                <button
+                  key={`operation-${operation.id}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() =>
+                    choose(
+                      `/operations?q=${encodeURIComponent(operation.reference)}&operation=${operation.id}`,
+                    )
+                  }
+                >
+                  <OperationIcon type={operation.type} />
+                  <div>
+                    <strong>{operation.reference}</strong>
+                    <small>
+                      {operation.partner || operationLabel[operation.type]}
+                    </small>
+                  </div>
+                  <StatusBadge status={operation.status} />
+                </button>
+              ))}
+            </div>
+          )}
+          {!loading && !products.length && !operations.length && (
+            <div className="search-empty">No products or operations found.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -236,18 +359,18 @@ function Dashboard() {
     <>
       <PageHeader
         eyebrow="Inventory command center"
-        title="Good morning, Rayana"
+        title={`${dayGreeting()}, Rayana`}
         description="Here is what is moving across your warehouses today."
       >
         <button
           className="button secondary"
-          onClick={() => navigate("/products")}
+          onClick={() => navigate("/products?new=1")}
         >
           <Plus size={17} /> Add product
         </button>
         <button
           className="button primary"
-          onClick={() => navigate("/operations")}
+          onClick={() => navigate("/operations?new=1")}
         >
           <ArrowLeftRight size={17} /> New operation
         </button>
@@ -365,13 +488,15 @@ function Dashboard() {
 }
 
 function ProductsPage() {
+  const [searchParams] = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [meta, setMeta] = useState<{
     locations: Location[];
     categories: string[];
   }>({ locations: [], categories: [] });
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q") || "");
   const [modal, setModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -391,6 +516,15 @@ function ProductsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const routedQuery = searchParams.get("q");
+    if (routedQuery !== null) setQuery(routedQuery);
+    if (searchParams.get("new") === "1") {
+      setEditingProduct(null);
+      setModal(true);
+    }
+  }, [searchParams]);
+
   return (
     <>
       <PageHeader
@@ -398,7 +532,13 @@ function ProductsPage() {
         title="Products"
         description="Manage SKUs, reordering levels, and stock availability."
       >
-        <button className="button primary" onClick={() => setModal(true)}>
+        <button
+          className="button primary"
+          onClick={() => {
+            setEditingProduct(null);
+            setModal(true);
+          }}
+        >
           <Plus size={17} /> Add product
         </button>
       </PageHeader>
@@ -424,6 +564,16 @@ function ProductsPage() {
                 </div>
                 <StockBadge status={product.stockStatus} />
               </div>
+              <button
+                className="product-edit"
+                aria-label={`Edit ${product.name}`}
+                onClick={() => {
+                  setEditingProduct(product);
+                  setModal(true);
+                }}
+              >
+                <Pencil size={13} /> Edit
+              </button>
               <span className="sku">{product.sku}</span>
               <h3>{product.name}</h3>
               <p>{product.category}</p>
@@ -445,6 +595,7 @@ function ProductsPage() {
         <ProductModal
           locations={meta.locations}
           categories={meta.categories}
+          product={editingProduct}
           onClose={() => setModal(false)}
           onSaved={() => {
             setModal(false);
@@ -459,11 +610,13 @@ function ProductsPage() {
 function ProductModal({
   locations,
   categories,
+  product,
   onClose,
   onSaved,
 }: {
   locations: Location[];
   categories: string[];
+  product?: Product | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -475,16 +628,20 @@ function ProductModal({
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      await api("/api/products", {
-        method: "POST",
+      await api(product ? `/api/products/${product.id}` : "/api/products", {
+        method: product ? "PATCH" : "POST",
         body: JSON.stringify({
           name: form.get("name"),
           sku: form.get("sku"),
           category: form.get("category"),
           unit: form.get("unit"),
           reorderLevel: Number(form.get("reorderLevel")),
-          initialStock: Number(form.get("initialStock")),
-          locationId: Number(form.get("locationId")),
+          ...(product
+            ? {}
+            : {
+                initialStock: Number(form.get("initialStock")),
+                locationId: Number(form.get("locationId")),
+              }),
         }),
       });
       onSaved();
@@ -495,8 +652,12 @@ function ProductModal({
   };
   return (
     <Modal
-      title="Add a product"
-      description="Create a tracked SKU and its opening stock."
+      title={product ? "Edit product" : "Add a product"}
+      description={
+        product
+          ? "Update the product identity and replenishment rules."
+          : "Create a tracked SKU and its opening stock."
+      }
       onClose={onClose}
     >
       <form className="form" onSubmit={submit}>
@@ -507,6 +668,7 @@ function ProductModal({
             name="name"
             required
             minLength={2}
+            defaultValue={product?.name}
             placeholder="e.g. Steel Rods"
           />
         </label>
@@ -516,6 +678,7 @@ function ProductModal({
             name="sku"
             required
             pattern="[A-Za-z0-9][A-Za-z0-9._-]*"
+            defaultValue={product?.sku}
             placeholder="STL-ROD-12"
           />
         </label>
@@ -525,6 +688,7 @@ function ProductModal({
             name="category"
             required
             list="category-list"
+            defaultValue={product?.category}
             placeholder="Raw Materials"
           />
           <datalist id="category-list">
@@ -535,7 +699,12 @@ function ProductModal({
         </label>
         <label>
           Unit of measure
-          <input name="unit" required placeholder="units, kg, boxes" />
+          <input
+            name="unit"
+            required
+            defaultValue={product?.unit}
+            placeholder="units, kg, boxes"
+          />
         </label>
         <label>
           Reorder level
@@ -544,40 +713,44 @@ function ProductModal({
             type="number"
             min="0"
             step="0.01"
-            defaultValue="0"
+            defaultValue={product?.reorderLevel ?? 0}
             required
           />
         </label>
-        <label>
-          Opening stock
-          <input
-            name="initialStock"
-            type="number"
-            min="0"
-            step="0.01"
-            defaultValue="0"
-            required
-          />
-        </label>
-        <label>
-          Stock location
-          <select name="locationId" required defaultValue="">
-            <option value="" disabled>
-              Select location
-            </option>
-            {locations.map((location) => (
-              <option value={location.id} key={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!product && (
+          <>
+            <label>
+              Opening stock
+              <input
+                name="initialStock"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue="0"
+                required
+              />
+            </label>
+            <label>
+              Stock location
+              <select name="locationId" required defaultValue="">
+                <option value="" disabled>
+                  Select location
+                </option>
+                {locations.map((location) => (
+                  <option value={location.id} key={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
         <div className="form-actions full-field">
           <button type="button" className="button secondary" onClick={onClose}>
             Cancel
           </button>
           <button className="button primary" disabled={busy}>
-            {busy ? "Creating..." : "Create product"}
+            {busy ? "Saving..." : product ? "Save changes" : "Create product"}
           </button>
         </div>
       </form>
@@ -586,14 +759,24 @@ function ProductModal({
 }
 
 function OperationsPage() {
+  const [searchParams] = useSearchParams();
   const [operations, setOperations] = useState<Operation[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [createModal, setCreateModal] = useState(false);
-  const [selectedOperation, setSelectedOperation] = useState<number | null>(
-    null,
+  const [createModal, setCreateModal] = useState(
+    searchParams.get("new") === "1",
   );
-  const [filters, setFilters] = useState({ query: "", type: "", status: "" });
+  const [selectedOperation, setSelectedOperation] = useState<number | null>(
+    () => {
+      const value = Number(searchParams.get("operation"));
+      return Number.isInteger(value) && value > 0 ? value : null;
+    },
+  );
+  const [filters, setFilters] = useState({
+    query: searchParams.get("q") || "",
+    type: "",
+    status: "",
+  });
   const [error, setError] = useState("");
 
   const loadOperations = useCallback(async () => {
@@ -613,6 +796,16 @@ function OperationsPage() {
   useEffect(() => {
     void loadOperations();
   }, [loadOperations]);
+
+  useEffect(() => {
+    const query = searchParams.get("q");
+    if (query !== null) setFilters((current) => ({ ...current, query }));
+    const operationId = Number(searchParams.get("operation"));
+    if (Number.isInteger(operationId) && operationId > 0) {
+      setSelectedOperation(operationId);
+    }
+    if (searchParams.get("new") === "1") setCreateModal(true);
+  }, [searchParams]);
 
   useEffect(() => {
     Promise.all([
@@ -1321,12 +1514,61 @@ interface LedgerRow {
 }
 function LedgerPage() {
   const [rows, setRows] = useState<LedgerRow[]>([]);
+  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     api<LedgerRow[]>("/api/ledger")
       .then(setRows)
       .catch((err) => setError(err.message));
   }, []);
+  const filteredRows = useMemo(() => {
+    const value = query.trim().toLowerCase();
+    if (!value) return rows;
+    return rows.filter((row) =>
+      [row.reference, row.product, row.sku, row.location, row.type]
+        .join(" ")
+        .toLowerCase()
+        .includes(value),
+    );
+  }, [query, rows]);
+
+  const exportLedger = () => {
+    const headings = [
+      "Time",
+      "Reference",
+      "Type",
+      "Product",
+      "SKU",
+      "Location",
+      "Change",
+      "Unit",
+      "Balance",
+    ];
+    const lines = filteredRows.map((row) =>
+      [
+        row.createdAt,
+        row.reference,
+        row.type,
+        row.product,
+        row.sku,
+        row.location,
+        row.changeQuantity,
+        row.unit,
+        row.balanceAfter,
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+    const blob = new Blob([[headings.join(","), ...lines].join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `stocksense-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   return (
     <>
       <PageHeader
@@ -1335,83 +1577,313 @@ function LedgerPage() {
         description="Every validated stock change, traced to its operation."
       />
       {error && <InlineError message={error} onClose={() => setError("")} />}
-      <div className="panel table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Reference</th>
-              <th>Product</th>
-              <th>Location</th>
-              <th>Change</th>
-              <th>Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length ? (
-              rows.map((row) => (
-                <tr key={row.id}>
-                  <td>{formatDate(row.createdAt)}</td>
-                  <td>
-                    <span className={`operation-icon ${row.type}`}>
-                      <OperationIcon type={row.type} />
-                    </span>
-                    <b>{row.reference}</b>
-                  </td>
-                  <td>
-                    <strong>{row.product}</strong>
-                    <small>{row.sku}</small>
-                  </td>
-                  <td>{row.location}</td>
-                  <td>
-                    <b
-                      className={
-                        row.changeQuantity >= 0 ? "positive" : "danger"
-                      }
-                    >
-                      {row.changeQuantity >= 0 ? "+" : ""}
-                      {row.changeQuantity} {row.unit}
-                    </b>
-                  </td>
-                  <td>
-                    {row.balanceAfter} {row.unit}
+      <div className="panel">
+        <div className="toolbar ledger-toolbar">
+          <div className="table-search">
+            <Search size={17} />
+            <input
+              aria-label="Search move history"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search reference, product, SKU, or location"
+            />
+          </div>
+          <button
+            className="button secondary compact"
+            onClick={exportLedger}
+            disabled={!filteredRows.length}
+          >
+            <Download size={15} /> Export CSV
+          </button>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Reference</th>
+                <th>Product</th>
+                <th>Location</th>
+                <th>Change</th>
+                <th>Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.length ? (
+                filteredRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{formatDate(row.createdAt)}</td>
+                    <td>
+                      <span className={`operation-icon ${row.type}`}>
+                        <OperationIcon type={row.type} />
+                      </span>
+                      <b>{row.reference}</b>
+                    </td>
+                    <td>
+                      <strong>{row.product}</strong>
+                      <small>{row.sku}</small>
+                    </td>
+                    <td>{row.location}</td>
+                    <td>
+                      <b
+                        className={
+                          row.changeQuantity >= 0 ? "positive" : "danger"
+                        }
+                      >
+                        {row.changeQuantity >= 0 ? "+" : ""}
+                        {row.changeQuantity} {row.unit}
+                      </b>
+                    </td>
+                    <td>
+                      {row.balanceAfter} {row.unit}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6}>
+                    <EmptyState
+                      title="No ledger entries yet"
+                      description="Validate an inventory operation to create the first stock movement."
+                    />
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={6}>
-                  <EmptyState
-                    title="No ledger entries yet"
-                    description="Validate an inventory operation to create the first stock movement."
-                  />
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   );
 }
 
-function PlaceholderPage() {
+interface WarehouseSetting {
+  id: number;
+  name: string;
+  code: string;
+  locationCount: number;
+  stockUnits: number;
+}
+
+interface LocationSetting extends Location {
+  warehouseId: number;
+  productCount: number;
+  stockUnits: number;
+}
+
+function SettingsPage() {
+  const [data, setData] = useState<{
+    warehouses: WarehouseSetting[];
+    locations: LocationSetting[];
+  } | null>(null);
+  const [modal, setModal] = useState<"warehouse" | "location" | null>(null);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setData(
+        await api<{
+          warehouses: WarehouseSetting[];
+          locations: LocationSetting[];
+        }>("/api/settings"),
+      );
+      setError("");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   return (
     <>
       <PageHeader
         eyebrow="Configuration"
         title="Settings"
-        description="Warehouses, locations, users, and notification rules."
-      />
-      <div className="panel placeholder">
-        <ShieldCheck size={34} />
-        <h2>Workspace settings are planned</h2>
-        <p>
-          The core inventory engine is ready. Role management, OTP recovery, and
-          warehouse setup come next.
-        </p>
-      </div>
+        description="Manage the warehouses and locations that power inventory routes."
+      >
+        <button
+          className="button secondary"
+          onClick={() => setModal("warehouse")}
+        >
+          <Warehouse size={16} /> Add warehouse
+        </button>
+        <button className="button primary" onClick={() => setModal("location")}>
+          <MapPin size={16} /> Add location
+        </button>
+      </PageHeader>
+      {error && <InlineError message={error} onClose={() => setError("")} />}
+      {!data ? (
+        <LoadingState error={error} />
+      ) : (
+        <div className="settings-stack">
+          <section className="settings-grid">
+            {data.warehouses.map((warehouse) => (
+              <article className="warehouse-card" key={warehouse.id}>
+                <div className="warehouse-card-icon">
+                  <Warehouse size={19} />
+                </div>
+                <div>
+                  <span>{warehouse.code}</span>
+                  <h3>{warehouse.name}</h3>
+                  <p>
+                    {warehouse.locationCount} location
+                    {warehouse.locationCount === 1 ? "" : "s"} ·{" "}
+                    {formatNumber(warehouse.stockUnits)} units
+                  </p>
+                </div>
+              </article>
+            ))}
+          </section>
+          <section className="panel">
+            <div className="panel-heading settings-heading">
+              <div>
+                <span className="eyebrow">Storage map</span>
+                <h2>Locations</h2>
+              </div>
+              <span className="count-badge">{data.locations.length}</span>
+            </div>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Location</th>
+                    <th>Code</th>
+                    <th>Warehouse</th>
+                    <th>Products</th>
+                    <th>Stock units</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.locations.map((location) => (
+                    <tr key={location.id}>
+                      <td>
+                        <strong>{location.name}</strong>
+                      </td>
+                      <td>
+                        <span className="code-chip">{location.code}</span>
+                      </td>
+                      <td>{location.warehouse}</td>
+                      <td>{location.productCount}</td>
+                      <td>{formatNumber(location.stockUnits)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
+      {modal && data && (
+        <SettingsModal
+          kind={modal}
+          warehouses={data.warehouses}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
+            void load();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function SettingsModal({
+  kind,
+  warehouses,
+  onClose,
+  onSaved,
+}: {
+  kind: "warehouse" | "location";
+  warehouses: WarehouseSetting[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await api(kind === "warehouse" ? "/api/warehouses" : "/api/locations", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.get("name"),
+          code: form.get("code"),
+          ...(kind === "location"
+            ? { warehouseId: Number(form.get("warehouseId")) }
+            : {}),
+        }),
+      });
+      onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={`Add ${kind}`}
+      description={
+        kind === "warehouse"
+          ? "Create a warehouse that can contain stock locations."
+          : "Create a source or destination for inventory movements."
+      }
+      onClose={onClose}
+    >
+      <form className="form" onSubmit={submit}>
+        {error && <InlineError message={error} onClose={() => setError("")} />}
+        <label>
+          {kind === "warehouse" ? "Warehouse name" : "Location name"}
+          <input
+            name="name"
+            required
+            minLength={2}
+            placeholder={
+              kind === "warehouse" ? "North Warehouse" : "Receiving Dock"
+            }
+          />
+        </label>
+        <label>
+          Code
+          <input
+            name="code"
+            required
+            minLength={2}
+            pattern="[A-Za-z0-9][A-Za-z0-9._/-]*"
+            placeholder={kind === "warehouse" ? "WH-NORTH" : "NORTH/IN"}
+          />
+        </label>
+        {kind === "location" && (
+          <label className="full-field">
+            Warehouse
+            <select name="warehouseId" required defaultValue="">
+              <option value="" disabled>
+                Select warehouse
+              </option>
+              {warehouses.map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>
+                  {warehouse.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="form-actions full-field">
+          <button type="button" className="button secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button primary" disabled={busy}>
+            {busy ? "Saving..." : `Create ${kind}`}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -1723,10 +2195,20 @@ function formatDate(value: string) {
     minute: "2-digit",
   }).format(date);
 }
+function dayGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 }).format(
     value || 0,
   );
+}
+function csvCell(value: string | number) {
+  const text = String(value);
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
