@@ -9,6 +9,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { db, type SqlValue } from "./db.js";
+import {
+  operationSchema,
+  operationTypes,
+  validateOperationRoute,
+} from "./operations.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -22,12 +27,6 @@ app.use(
 app.use(cors());
 app.use(express.json({ limit: "256kb" }));
 
-const operationTypes = [
-  "receipt",
-  "delivery",
-  "transfer",
-  "adjustment",
-] as const;
 const statuses = ["draft", "waiting", "ready", "done", "canceled"] as const;
 
 const productSchema = z.object({
@@ -43,24 +42,6 @@ const productSchema = z.object({
   reorderLevel: z.number().min(0),
   initialStock: z.number().min(0).default(0),
   locationId: z.number().int().positive(),
-});
-
-const operationSchema = z.object({
-  type: z.enum(operationTypes),
-  partner: z.string().trim().max(100).optional().nullable(),
-  sourceLocationId: z.number().int().positive().optional().nullable(),
-  destinationLocationId: z.number().int().positive().optional().nullable(),
-  scheduledAt: z.string().datetime(),
-  notes: z.string().trim().max(500).optional().nullable(),
-  lines: z
-    .array(
-      z.object({
-        productId: z.number().int().positive(),
-        quantity: z.number().positive(),
-        countedQuantity: z.number().min(0).optional().nullable(),
-      }),
-    )
-    .min(1),
 });
 
 function asyncRoute(
@@ -275,28 +256,17 @@ app.get("/api/operations", (req, res) => {
 
 app.post("/api/operations", (req, res) => {
   const input = operationSchema.parse(req.body);
-  if (input.type === "receipt" && !input.destinationLocationId)
-    throw new Error("Receipts require a destination location.");
-  if (
-    ["delivery", "adjustment"].includes(input.type) &&
-    !input.sourceLocationId
-  )
-    throw new Error(`${input.type} requires a source location.`);
-  if (
-    input.type === "transfer" &&
-    (!input.sourceLocationId ||
-      !input.destinationLocationId ||
-      input.sourceLocationId === input.destinationLocationId)
-  ) {
-    throw new Error(
-      "Transfers require different source and destination locations.",
-    );
-  }
-  if (
-    input.type === "adjustment" &&
-    input.lines.some((line) => line.countedQuantity == null)
-  ) {
-    throw new Error("Adjustments require a counted quantity for every line.");
+  validateOperationRoute(input);
+
+  const activeProducts = db
+    .prepare(
+      `SELECT id FROM products WHERE active = 1 AND id IN (${input.lines
+        .map(() => "?")
+        .join(",")})`,
+    )
+    .all(...input.lines.map((line) => line.productId));
+  if (activeProducts.length !== input.lines.length) {
+    throw new Error("One or more selected products are unavailable.");
   }
 
   const prefix = {

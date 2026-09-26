@@ -15,6 +15,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Warehouse,
   X,
 } from "lucide-react";
@@ -653,18 +654,52 @@ function OperationModal({
   onSaved: () => void;
 }) {
   const [type, setType] = useState<OperationType>("receipt");
+  const [lines, setLines] = useState([
+    { id: 1, productId: "", quantity: "", countedQuantity: "" },
+  ]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const needsSource = type !== "receipt";
   const needsDestination = type === "receipt" || type === "transfer";
+
+  const updateLine = (
+    id: number,
+    field: "productId" | "quantity" | "countedQuantity",
+    value: string,
+  ) => {
+    setLines((current) =>
+      current.map((line) =>
+        line.id === id ? { ...line, [field]: value } : line,
+      ),
+    );
+  };
+
+  const addLine = () => {
+    setLines((current) => [
+      ...current,
+      {
+        id: Math.max(...current.map((line) => line.id)) + 1,
+        productId: "",
+        quantity: "",
+        countedQuantity: "",
+      },
+    ]);
+  };
+
+  const removeLine = (id: number) => {
+    setLines((current) => current.filter((line) => line.id !== id));
+  };
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const quantity = Number(form.get("quantity"));
-    const counted = Number(form.get("countedQuantity"));
     try {
+      const productIds = lines.map((line) => Number(line.productId));
+      if (new Set(productIds).size !== productIds.length) {
+        throw new Error("Add each product only once per operation.");
+      }
       await api("/api/operations", {
         method: "POST",
         body: JSON.stringify({
@@ -678,14 +713,12 @@ function OperationModal({
             : null,
           scheduledAt: new Date(String(form.get("scheduledAt"))).toISOString(),
           notes: form.get("notes") || null,
-          lines: [
-            {
-              productId: Number(form.get("productId")),
-              quantity:
-                type === "adjustment" ? Math.max(counted, 0.01) : quantity,
-              countedQuantity: type === "adjustment" ? counted : null,
-            },
-          ],
+          lines: lines.map((line) => ({
+            productId: Number(line.productId),
+            quantity: type === "adjustment" ? 0 : Number(line.quantity),
+            countedQuantity:
+              type === "adjustment" ? Number(line.countedQuantity) : null,
+          })),
         }),
       });
       onSaved();
@@ -702,8 +735,9 @@ function OperationModal({
   return (
     <Modal
       title="Create an operation"
-      description="Start with one product line; multi-line editing is next in the roadmap."
+      description="Move several products together in one traceable stock operation."
       onClose={onClose}
+      wide
     >
       <form className="form" onSubmit={submit}>
         {error && <InlineError message={error} onClose={() => setError("")} />}
@@ -711,7 +745,10 @@ function OperationModal({
           Operation type
           <select
             value={type}
-            onChange={(event) => setType(event.target.value as OperationType)}
+            onChange={(event) => {
+              setType(event.target.value as OperationType);
+              setError("");
+            }}
           >
             {operationTypes().map((option) => (
               <option value={option.value} key={option.value}>
@@ -729,42 +766,6 @@ function OperationModal({
             defaultValue={tomorrow}
           />
         </label>
-        <label className="full-field">
-          Product
-          <select name="productId" required defaultValue="">
-            <option value="" disabled>
-              Select product
-            </option>
-            {products.map((product) => (
-              <option value={product.id} key={product.id}>
-                {product.name} · {product.quantity} {product.unit}
-              </option>
-            ))}
-          </select>
-        </label>
-        {type === "adjustment" ? (
-          <label>
-            Physical count
-            <input
-              name="countedQuantity"
-              type="number"
-              min="0"
-              step="0.01"
-              required
-            />
-          </label>
-        ) : (
-          <label>
-            Quantity
-            <input
-              name="quantity"
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
-            />
-          </label>
-        )}
         <label>
           Partner / reference
           <input
@@ -808,6 +809,113 @@ function OperationModal({
             </select>
           </label>
         )}
+        <div className="operation-lines full-field">
+          <div className="operation-lines-heading">
+            <div>
+              <strong>Product lines</strong>
+              <span>
+                {lines.length} {lines.length === 1 ? "item" : "items"} in this
+                operation
+              </span>
+            </div>
+            <button
+              type="button"
+              className="button secondary compact"
+              onClick={addLine}
+              disabled={lines.length >= products.length}
+            >
+              <Plus size={15} /> Add line
+            </button>
+          </div>
+          <div className="operation-line-list">
+            {lines.map((line, index) => {
+              const product = products.find(
+                (item) => String(item.id) === line.productId,
+              );
+              return (
+                <div className="operation-line" key={line.id}>
+                  <span className="line-number">{index + 1}</span>
+                  <label>
+                    Product
+                    <select
+                      aria-label={`Product for line ${index + 1}`}
+                      required
+                      value={line.productId}
+                      onChange={(event) =>
+                        updateLine(line.id, "productId", event.target.value)
+                      }
+                    >
+                      <option value="" disabled>
+                        Select product
+                      </option>
+                      {products.map((item) => (
+                        <option
+                          value={item.id}
+                          key={item.id}
+                          disabled={lines.some(
+                            (other) =>
+                              other.id !== line.id &&
+                              other.productId === String(item.id),
+                          )}
+                        >
+                          {item.name} · {item.quantity} {item.unit}
+                        </option>
+                      ))}
+                    </select>
+                    {product && (
+                      <small>
+                        {product.sku} · {product.quantity} {product.unit} on
+                        hand
+                      </small>
+                    )}
+                  </label>
+                  <label>
+                    {type === "adjustment" ? "Physical count" : "Quantity"}
+                    <input
+                      aria-label={`${
+                        type === "adjustment" ? "Physical count" : "Quantity"
+                      } for line ${index + 1}`}
+                      type="number"
+                      min={type === "adjustment" ? "0" : "0.01"}
+                      step="0.01"
+                      required
+                      value={
+                        type === "adjustment"
+                          ? line.countedQuantity
+                          : line.quantity
+                      }
+                      onChange={(event) =>
+                        updateLine(
+                          line.id,
+                          type === "adjustment"
+                            ? "countedQuantity"
+                            : "quantity",
+                          event.target.value,
+                        )
+                      }
+                      placeholder="0.00"
+                    />
+                    {product && <small>Measured in {product.unit}</small>}
+                  </label>
+                  <button
+                    type="button"
+                    className="remove-line"
+                    onClick={() => removeLine(line.id)}
+                    disabled={lines.length === 1}
+                    aria-label={`Remove line ${index + 1}`}
+                    title={
+                      lines.length === 1
+                        ? "An operation needs at least one line"
+                        : "Remove product line"
+                    }
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
         <label className="full-field">
           Notes
           <textarea
@@ -1042,11 +1150,13 @@ function Modal({
   description,
   onClose,
   children,
+  wide = false,
 }: {
   title: string;
   description: string;
   onClose: () => void;
   children: ReactNode;
+  wide?: boolean;
 }) {
   return (
     <div className="modal-layer">
@@ -1056,7 +1166,7 @@ function Modal({
         aria-label="Close modal"
       />
       <section
-        className="modal"
+        className={`modal ${wide ? "modal-wide" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"

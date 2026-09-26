@@ -768,6 +768,9 @@ td small {
   border-radius: 15px;
   box-shadow: 0 24px 80px #0d0e1238;
 }
+.modal-wide {
+  width: min(820px, 100%);
+}
 .modal-head {
   display: flex;
   justify-content: space-between;
@@ -839,6 +842,90 @@ td small {
   justify-content: flex-end;
   flex-direction: row;
   padding-top: 4px;
+}
+.button.compact {
+  min-height: 34px;
+  padding: 0 11px;
+}
+.operation-lines {
+  border: 1px solid #e3e3e7;
+  border-radius: 11px;
+  overflow: hidden;
+  background: #fafafa;
+}
+.operation-lines-heading {
+  min-height: 60px;
+  padding: 11px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid #e7e7ea;
+  background: #fff;
+}
+.operation-lines-heading strong,
+.operation-lines-heading span {
+  display: block;
+}
+.operation-lines-heading strong {
+  color: #363b42;
+  font-size: 11px;
+}
+.operation-lines-heading span {
+  margin-top: 3px;
+  color: #8a9097;
+  font-size: 9px;
+}
+.operation-line-list {
+  display: grid;
+}
+.operation-line {
+  display: grid;
+  grid-template-columns: 28px minmax(230px, 1fr) minmax(130px, 0.42fr) 34px;
+  align-items: start;
+  gap: 10px;
+  padding: 13px;
+  border-bottom: 1px solid #e7e7ea;
+}
+.operation-line:last-child {
+  border-bottom: 0;
+}
+.line-number {
+  width: 25px;
+  height: 25px;
+  margin-top: 19px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: #6841c9;
+  background: #eee9ff;
+  font-size: 9px;
+  font-weight: 800;
+}
+.operation-line label small {
+  min-height: 12px;
+  color: #8a9097;
+  font-size: 8px;
+  font-weight: 500;
+}
+.remove-line {
+  width: 32px;
+  height: 32px;
+  margin-top: 18px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: #a74848;
+  background: #fff0f0;
+}
+.remove-line:hover:not(:disabled) {
+  background: #f9dddd;
+}
+.remove-line:disabled {
+  cursor: not-allowed;
+  color: #a3a7ac;
+  background: #ededee;
 }
 .inline-error {
   display: flex;
@@ -1005,6 +1092,16 @@ td small {
   .kpi-card {
     padding: 15px;
   }
+  .operation-line {
+    grid-template-columns: 28px minmax(0, 1fr) 34px;
+  }
+  .operation-line label:nth-of-type(2) {
+    grid-column: 2;
+  }
+  .remove-line {
+    grid-column: 3;
+    grid-row: 1;
+  }
 }
 @media (max-width: 430px) {
   .kpi-grid {
@@ -1015,5 +1112,12 @@ td small {
   }
   .page-header h1 {
     font-size: 28px;
+  }
+  .operation-lines-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .operation-lines-heading .button {
+    width: 100%;
   }
 }

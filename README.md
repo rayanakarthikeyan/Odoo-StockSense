@@ -29,13 +29,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development rules and de
 - Responsive live dashboard with KPI and operation filters
 - Product catalog, SKU search, opening stock, and reorder alerts
 - Receipt, delivery, transfer, and adjustment drafts
+- Multi-line operation editor with duplicate-product prevention
 - Atomic operation validation with negative-stock protection
 - Immutable stock movement ledger
 - Local SQLite persistence and production build support
 
 ## Next milestones
 
-1. Multi-line operation editor and barcode/SKU scanner
+1. Barcode/SKU scanner and rapid line entry
 2. Authentication, roles, and OTP password recovery
 3. Warehouse/location administration and reordering automation
 4. Picking and packing workflow states
