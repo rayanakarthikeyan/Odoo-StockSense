@@ -33,6 +33,22 @@ export interface Operation {
   totalQuantity: number;
 }
 
+export interface OperationLine {
+  id: number;
+  productId: number;
+  product: string;
+  sku: string;
+  unit: string;
+  quantity: number;
+  countedQuantity?: number | null;
+}
+
+export interface OperationDetail extends Operation {
+  completedAt?: string | null;
+  notes?: string | null;
+  lines: OperationLine[];
+}
+
 export interface DashboardData {
   kpis: {
     totalProducts: number;

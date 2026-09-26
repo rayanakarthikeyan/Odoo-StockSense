@@ -7,6 +7,17 @@ export const operationTypes = [
   "adjustment",
 ] as const;
 
+export const operationStatuses = [
+  "draft",
+  "waiting",
+  "ready",
+  "done",
+  "canceled",
+] as const;
+
+export type OperationType = (typeof operationTypes)[number];
+export type OperationStatus = (typeof operationStatuses)[number];
+
 const operationLineSchema = z.object({
   productId: z.number().int().positive(),
   quantity: z.number().min(0),
@@ -75,5 +86,48 @@ export function validateOperationRoute(input: OperationInput) {
     throw new Error(
       "Transfers require different source and destination locations.",
     );
+  }
+}
+
+const nextStatuses: Record<
+  OperationType,
+  Partial<Record<OperationStatus, OperationStatus>>
+> = {
+  receipt: { draft: "ready", ready: "done" },
+  delivery: { draft: "waiting", waiting: "ready", ready: "done" },
+  transfer: { draft: "waiting", waiting: "ready", ready: "done" },
+  adjustment: { draft: "ready", ready: "done" },
+};
+
+export function getNextOperationStatus(
+  type: OperationType,
+  status: OperationStatus,
+) {
+  return nextStatuses[type][status] ?? null;
+}
+
+export function validateStatusTransition(
+  type: OperationType,
+  currentStatus: OperationStatus,
+  nextStatus: OperationStatus,
+) {
+  if (currentStatus === "done" || currentStatus === "canceled") {
+    throw new Error("Completed or canceled operations cannot be changed.");
+  }
+  if (nextStatus === "canceled") return;
+
+  const expectedStatus = getNextOperationStatus(type, currentStatus);
+  if (nextStatus !== expectedStatus || nextStatus === "done") {
+    throw new Error(
+      expectedStatus
+        ? `The next status must be ${expectedStatus}.`
+        : "This operation has no available status transition.",
+    );
+  }
+}
+
+export function validateReadyForCompletion(status: OperationStatus) {
+  if (status !== "ready") {
+    throw new Error("Only ready operations can be validated.");
   }
 }

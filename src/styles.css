@@ -523,7 +523,12 @@ td small {
 .status.canceled i {
   background: #d65454;
 }
-.validate-button {
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.row-action {
   border: 1px solid #dedfe3;
   background: #fff;
   border-radius: 7px;
@@ -535,9 +540,14 @@ td small {
   font-size: 9px;
   font-weight: 700;
 }
-.validate-button:hover {
+.row-action:hover {
   border-color: #baa9ee;
   color: #6236d2;
+}
+.row-action.ghost {
+  border-color: transparent;
+  color: #71777e;
+  background: #f5f5f6;
 }
 .alert-list {
   padding: 0 18px 8px;
@@ -645,6 +655,40 @@ td small {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
+}
+.operations-toolbar {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.operation-search {
+  flex: 1 1 320px;
+}
+.operation-search input {
+  width: 100%;
+}
+.operation-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.operation-filter-group select {
+  min-height: 36px;
+  border: 1px solid #e5e6e8;
+  border-radius: 8px;
+  padding: 0 28px 0 10px;
+  color: #5e646b;
+  background: #fafafa;
+  font-size: 10px;
+  outline: 0;
+}
+.operation-filter-group select:focus {
+  border-color: #8c6ae9;
+  box-shadow: 0 0 0 3px #8058e61c;
+}
+.operation-count {
+  min-width: 82px;
+  text-align: right;
 }
 .table-search {
   display: flex;
@@ -927,6 +971,109 @@ td small {
   color: #a3a7ac;
   background: #ededee;
 }
+.detail-loading {
+  min-height: 280px;
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #747a81;
+  font-size: 11px;
+}
+.operation-detail {
+  padding: 20px 24px 24px;
+}
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.detail-summary > div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 9px;
+  background: #f7f7f8;
+}
+.detail-summary > div > span:first-child {
+  display: block;
+  margin-bottom: 7px;
+  color: #898f96;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+}
+.detail-summary strong {
+  display: block;
+  overflow: hidden;
+  color: #343940;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-lines {
+  overflow: hidden;
+  border: 1px solid #e5e5e8;
+  border-radius: 11px;
+}
+.detail-section-heading {
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.detail-section-heading .eyebrow {
+  margin-bottom: 3px;
+}
+.detail-section-heading h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.numeric-cell {
+  text-align: right;
+}
+.detail-notes {
+  margin-top: 14px;
+  padding: 13px 14px;
+  border-radius: 9px;
+  color: #565d64;
+  background: #f7f7f8;
+}
+.detail-notes span {
+  display: block;
+  color: #898f96;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.detail-notes p {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.detail-actions {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.detail-actions-primary {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.button.danger-button {
+  color: #a33e3e;
+  border: 1px solid #f0cece;
+  background: #fff5f5;
+}
+.button.danger-button:hover {
+  background: #fde8e8;
+}
 .inline-error {
   display: flex;
   align-items: center;
@@ -1086,6 +1233,16 @@ td small {
   .toolbar {
     gap: 10px;
   }
+  .operation-filter-group {
+    width: 100%;
+  }
+  .operation-filter-group select {
+    flex: 1;
+  }
+  .operation-count {
+    width: 100%;
+    text-align: left;
+  }
   .kpi-grid {
     gap: 10px;
   }
@@ -1101,6 +1258,19 @@ td small {
   .remove-line {
     grid-column: 3;
     grid-row: 1;
+  }
+  .detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .detail-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .detail-actions-primary {
+    flex-wrap: wrap;
+  }
+  .detail-actions .button {
+    flex: 1;
   }
 }
 @media (max-width: 430px) {

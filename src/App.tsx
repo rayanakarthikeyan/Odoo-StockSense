@@ -2,11 +2,14 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   ArrowLeftRight,
+  ArrowRight,
   ArrowUpFromLine,
+  Ban,
   Boxes,
   ChevronDown,
   ClipboardCheck,
   History,
+  Eye,
   LayoutDashboard,
   Menu,
   Package,
@@ -39,6 +42,7 @@ import type {
   DashboardData,
   Location,
   Operation,
+  OperationDetail,
   OperationStatus,
   OperationType,
   Product,
@@ -584,34 +588,71 @@ function OperationsPage() {
   const [operations, setOperations] = useState<Operation[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [modal, setModal] = useState(false);
+  const [createModal, setCreateModal] = useState(false);
+  const [selectedOperation, setSelectedOperation] = useState<number | null>(
+    null,
+  );
+  const [filters, setFilters] = useState({ query: "", type: "", status: "" });
   const [error, setError] = useState("");
-  const load = useCallback(async () => {
+
+  const loadOperations = useCallback(async () => {
     try {
-      const [ops, items, meta] = await Promise.all([
-        api<Operation[]>("/api/operations"),
-        api<Product[]>("/api/products"),
-        api<{ locations: Location[] }>("/api/meta"),
-      ]);
+      const query = new URLSearchParams();
+      if (filters.query.trim()) query.set("q", filters.query.trim());
+      if (filters.type) query.set("type", filters.type);
+      if (filters.status) query.set("status", filters.status);
+      const ops = await api<Operation[]>(`/api/operations?${query}`);
       setOperations(ops);
-      setProducts(items);
-      setLocations(meta.locations);
       setError("");
     } catch (err) {
       setError((err as Error).message);
     }
-  }, []);
+  }, [filters]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadOperations();
+  }, [loadOperations]);
+
+  useEffect(() => {
+    Promise.all([
+      api<Product[]>("/api/products"),
+      api<{ locations: Location[] }>("/api/meta"),
+    ])
+      .then(([items, meta]) => {
+        setProducts(items);
+        setLocations(meta.locations);
+      })
+      .catch((err) => setError((err as Error).message));
+  }, []);
+
   const validate = async (id: number) => {
     try {
       await api(`/api/operations/${id}/validate`, { method: "POST" });
-      await load();
+      await loadOperations();
     } catch (err) {
       setError((err as Error).message);
+      throw err;
     }
   };
+
+  const changeStatus = async (id: number, status: OperationStatus) => {
+    try {
+      await api(`/api/operations/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      await loadOperations();
+    } catch (err) {
+      setError((err as Error).message);
+      throw err;
+    }
+  };
+
+  const advance = async (operation: Operation) => {
+    const next = nextOperationStatus(operation);
+    if (next) await changeStatus(operation.id, next);
+  };
+
   return (
     <>
       <PageHeader
@@ -619,23 +660,67 @@ function OperationsPage() {
         title="Operations"
         description="Receive, deliver, transfer, or reconcile inventory."
       >
-        <button className="button primary" onClick={() => setModal(true)}>
+        <button className="button primary" onClick={() => setCreateModal(true)}>
           <Plus size={17} /> New operation
         </button>
       </PageHeader>
       {error && <InlineError message={error} onClose={() => setError("")} />}
       <div className="panel">
-        <OperationTable operations={operations} onValidate={validate} />
+        <div className="toolbar operations-toolbar">
+          <div className="table-search operation-search">
+            <Search size={17} />
+            <input
+              value={filters.query}
+              onChange={(event) =>
+                setFilters({ ...filters, query: event.target.value })
+              }
+              placeholder="Search reference, partner, product, or SKU"
+              aria-label="Search operations"
+            />
+          </div>
+          <div className="operation-filter-group">
+            <FilterSelect
+              label="All types"
+              value={filters.type}
+              options={operationTypes()}
+              onChange={(type) => setFilters({ ...filters, type })}
+            />
+            <FilterSelect
+              label="All statuses"
+              value={filters.status}
+              options={["draft", "waiting", "ready", "done", "canceled"]}
+              onChange={(status) => setFilters({ ...filters, status })}
+            />
+            <span className="muted operation-count">
+              {operations.length} operation{operations.length === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+        <OperationTable
+          operations={operations}
+          onValidate={validate}
+          onAdvance={advance}
+          onOpen={setSelectedOperation}
+        />
       </div>
-      {modal && (
+      {createModal && (
         <OperationModal
           products={products}
           locations={locations}
-          onClose={() => setModal(false)}
+          onClose={() => setCreateModal(false)}
           onSaved={() => {
-            setModal(false);
-            void load();
+            setCreateModal(false);
+            void loadOperations();
           }}
+        />
+      )}
+      {selectedOperation && (
+        <OperationDetailModal
+          operationId={selectedOperation}
+          onClose={() => setSelectedOperation(null)}
+          onAdvance={advance}
+          onValidate={validate}
+          onCancel={(id) => changeStatus(id, "canceled")}
         />
       )}
     </>
@@ -937,6 +1022,220 @@ function OperationModal({
   );
 }
 
+function OperationDetailModal({
+  operationId,
+  onClose,
+  onAdvance,
+  onValidate,
+  onCancel,
+}: {
+  operationId: number;
+  onClose: () => void;
+  onAdvance: (operation: Operation) => Promise<void>;
+  onValidate: (id: number) => Promise<void>;
+  onCancel: (id: number) => Promise<void>;
+}) {
+  const [operation, setOperation] = useState<OperationDetail | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setOperation(
+        await api<OperationDetail>(`/api/operations/${operationId}`),
+      );
+      setError("");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [operationId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const execute = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={operation?.reference || "Operation details"}
+      description={
+        operation
+          ? `${operationLabel[operation.type]} · ${operation.lineCount} product ${
+              operation.lineCount === 1 ? "line" : "lines"
+            }`
+          : "Loading the complete inventory movement."
+      }
+      onClose={onClose}
+      wide
+    >
+      {!operation ? (
+        <div className="detail-loading">
+          {error ? (
+            <InlineError message={error} onClose={() => setError("")} />
+          ) : (
+            <>
+              <span className="spinner" />
+              <span>Loading operation...</span>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="operation-detail">
+          {error && (
+            <InlineError message={error} onClose={() => setError("")} />
+          )}
+          <div className="detail-summary">
+            <div>
+              <span>Status</span>
+              <StatusBadge status={operation.status} />
+            </div>
+            <div>
+              <span>Scheduled</span>
+              <strong>{formatDate(operation.scheduledAt)}</strong>
+            </div>
+            <div>
+              <span>Partner</span>
+              <strong>
+                {operation.partner || operationContext(operation.type)}
+              </strong>
+            </div>
+            <div>
+              <span>Route</span>
+              <strong>{routeLabel(operation)}</strong>
+            </div>
+          </div>
+
+          <div className="detail-lines">
+            <div className="detail-section-heading">
+              <div>
+                <span className="eyebrow">Inventory lines</span>
+                <h3>Products in this operation</h3>
+              </div>
+              <span className="count-badge">{operation.lines.length}</span>
+            </div>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th className="numeric-cell">
+                      {operation.type === "adjustment"
+                        ? "Physical count"
+                        : "Quantity"}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {operation.lines.map((line) => (
+                    <tr key={line.id}>
+                      <td>
+                        <strong>{line.product}</strong>
+                        <small>{line.unit}</small>
+                      </td>
+                      <td>{line.sku}</td>
+                      <td className="numeric-cell">
+                        <strong>
+                          {formatNumber(
+                            operation.type === "adjustment"
+                              ? (line.countedQuantity ?? 0)
+                              : line.quantity,
+                          )}
+                        </strong>
+                        <small>{line.unit}</small>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {operation.notes && (
+            <div className="detail-notes">
+              <span>Notes</span>
+              <p>{operation.notes}</p>
+            </div>
+          )}
+
+          <div className="detail-actions">
+            {operation.status !== "done" && operation.status !== "canceled" && (
+              <button
+                type="button"
+                className="button danger-button"
+                disabled={busy}
+                onClick={() => void execute(() => onCancel(operation.id))}
+              >
+                <Ban size={16} /> Cancel operation
+              </button>
+            )}
+            <div className="detail-actions-primary">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={onClose}
+              >
+                Close
+              </button>
+              {operation.status === "ready" && (
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() => void execute(() => onValidate(operation.id))}
+                >
+                  <ShieldCheck size={16} /> Validate movement
+                </button>
+              )}
+              {(operation.status === "draft" ||
+                operation.status === "waiting") && (
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() => void execute(() => onAdvance(operation))}
+                >
+                  <ArrowRight size={16} /> {workflowActionLabel(operation)}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function nextOperationStatus(operation: Operation): OperationStatus | null {
+  if (operation.status === "draft") {
+    return operation.type === "delivery" || operation.type === "transfer"
+      ? "waiting"
+      : "ready";
+  }
+  if (operation.status === "waiting") return "ready";
+  if (operation.status === "ready") return "done";
+  return null;
+}
+
+function workflowActionLabel(operation: Operation) {
+  const next = nextOperationStatus(operation);
+  if (next === "waiting") return "Start availability check";
+  if (next === "ready") return "Mark as ready";
+  return "Validate movement";
+}
+
 interface LedgerRow {
   id: number;
   createdAt: string;
@@ -1048,9 +1347,13 @@ function PlaceholderPage() {
 function OperationTable({
   operations,
   onValidate,
+  onAdvance,
+  onOpen,
 }: {
   operations: Operation[];
-  onValidate: (id: number) => void;
+  onValidate?: (id: number) => void | Promise<void>;
+  onAdvance?: (operation: Operation) => void | Promise<void>;
+  onOpen?: (id: number) => void;
 }) {
   return (
     <div className="table-scroll">
@@ -1095,15 +1398,35 @@ function OperationTable({
                   <StatusBadge status={operation.status} />
                 </td>
                 <td>
-                  {operation.status !== "done" &&
-                    operation.status !== "canceled" && (
+                  <div className="row-actions">
+                    {onOpen && (
                       <button
-                        className="validate-button"
-                        onClick={() => onValidate(operation.id)}
+                        className="row-action ghost"
+                        onClick={() => onOpen(operation.id)}
                       >
-                        <ShieldCheck size={15} /> Validate
+                        <Eye size={14} /> View
                       </button>
                     )}
+                    {operation.status === "ready" && onValidate && (
+                      <button
+                        className="row-action"
+                        onClick={() => void onValidate(operation.id)}
+                      >
+                        <ShieldCheck size={14} /> Validate
+                      </button>
+                    )}
+                    {(operation.status === "draft" ||
+                      operation.status === "waiting") &&
+                      onAdvance && (
+                        <button
+                          className="row-action"
+                          onClick={() => void onAdvance(operation)}
+                        >
+                          <ArrowRight size={14} />
+                          {operation.status === "waiting" ? "Ready" : "Next"}
+                        </button>
+                      )}
+                  </div>
                 </td>
               </tr>
             ))

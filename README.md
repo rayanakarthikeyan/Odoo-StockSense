@@ -30,6 +30,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development rules and de
 - Product catalog, SKU search, opening stock, and reorder alerts
 - Receipt, delivery, transfer, and adjustment drafts
 - Multi-line operation editor with duplicate-product prevention
+- Searchable operation queue with enforced workflow transitions
+- Operation detail view with complete product-line context
 - Atomic operation validation with negative-stock protection
 - Immutable stock movement ledger
 - Local SQLite persistence and production build support

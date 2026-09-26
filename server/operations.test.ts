@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { operationSchema, validateOperationRoute } from "./operations.js";
+import {
+  getNextOperationStatus,
+  operationSchema,
+  validateOperationRoute,
+  validateReadyForCompletion,
+  validateStatusTransition,
+} from "./operations.js";
 
 const receipt = {
   type: "receipt" as const,
@@ -57,6 +63,39 @@ describe("operation input validation", () => {
     });
     expect(() => validateOperationRoute(input)).toThrow(
       "Transfers require different source and destination locations.",
+    );
+  });
+});
+
+describe("operation workflow", () => {
+  it("moves receipts directly from draft to ready", () => {
+    expect(getNextOperationStatus("receipt", "draft")).toBe("ready");
+    expect(() =>
+      validateStatusTransition("receipt", "draft", "ready"),
+    ).not.toThrow();
+  });
+
+  it("moves deliveries through stock waiting", () => {
+    expect(getNextOperationStatus("delivery", "draft")).toBe("waiting");
+    expect(getNextOperationStatus("delivery", "waiting")).toBe("ready");
+  });
+
+  it("rejects skipped workflow states", () => {
+    expect(() =>
+      validateStatusTransition("delivery", "draft", "ready"),
+    ).toThrow("The next status must be waiting.");
+  });
+
+  it("allows cancellation before completion", () => {
+    expect(() =>
+      validateStatusTransition("transfer", "waiting", "canceled"),
+    ).not.toThrow();
+  });
+
+  it("only validates ready operations", () => {
+    expect(() => validateReadyForCompletion("ready")).not.toThrow();
+    expect(() => validateReadyForCompletion("waiting")).toThrow(
+      "Only ready operations can be validated.",
     );
   });
 });

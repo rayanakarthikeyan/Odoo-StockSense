@@ -10,9 +10,14 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { db, type SqlValue } from "./db.js";
 import {
+  type OperationStatus,
+  type OperationType,
+  operationStatuses,
   operationSchema,
   operationTypes,
+  validateReadyForCompletion,
   validateOperationRoute,
+  validateStatusTransition,
 } from "./operations.js";
 
 const app = express();
@@ -26,8 +31,6 @@ app.use(
 );
 app.use(cors());
 app.use(express.json({ limit: "256kb" }));
-
-const statuses = ["draft", "waiting", "ready", "done", "canceled"] as const;
 
 const productSchema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -82,7 +85,7 @@ app.get("/api/dashboard", (req, res) => {
     .optional()
     .safeParse(req.query.type || undefined);
   const status = z
-    .enum(statuses)
+    .enum(operationStatuses)
     .optional()
     .safeParse(req.query.status || undefined);
   const location = z.coerce
@@ -237,6 +240,44 @@ app.post("/api/products", (req, res) => {
 });
 
 app.get("/api/operations", (req, res) => {
+  const query = z
+    .string()
+    .trim()
+    .max(100)
+    .parse(req.query.q || "");
+  const type = z
+    .enum(operationTypes)
+    .optional()
+    .parse(req.query.type || undefined);
+  const status = z
+    .enum(operationStatuses)
+    .optional()
+    .parse(req.query.status || undefined);
+  const where = ["1 = 1"];
+  const params: SqlValue[] = [];
+
+  if (query) {
+    where.push(`(
+      o.reference LIKE ? OR o.partner LIKE ? OR
+      EXISTS (
+        SELECT 1 FROM operation_lines search_line
+        JOIN products search_product ON search_product.id = search_line.product_id
+        WHERE search_line.operation_id = o.id
+          AND (search_product.name LIKE ? OR search_product.sku LIKE ?)
+      )
+    )`);
+    const pattern = `%${query}%`;
+    params.push(pattern, pattern, pattern, pattern);
+  }
+  if (type) {
+    where.push("o.type = ?");
+    params.push(type);
+  }
+  if (status) {
+    where.push("o.status = ?");
+    params.push(status);
+  }
+
   const rows = db
     .prepare(
       `
@@ -247,11 +288,47 @@ app.get("/api/operations", (req, res) => {
     LEFT JOIN locations src ON src.id = o.source_location_id
     LEFT JOIN locations dest ON dest.id = o.destination_location_id
     LEFT JOIN operation_lines ol ON ol.operation_id = o.id
+    WHERE ${where.join(" AND ")}
     GROUP BY o.id ORDER BY datetime(o.created_at) DESC, o.id DESC
   `,
     )
-    .all();
+    .all(...params);
   res.json(rows);
+});
+
+app.get("/api/operations/:id", (req, res) => {
+  const id = z.coerce.number().int().positive().parse(req.params.id);
+  const operation = db
+    .prepare(
+      `
+    SELECT o.id, o.reference, o.type, o.status, o.partner, o.scheduled_at AS scheduledAt,
+      o.completed_at AS completedAt, o.notes, src.name AS sourceLocation,
+      dest.name AS destinationLocation, COUNT(ol.id) AS lineCount,
+      COALESCE(SUM(ol.quantity), 0) AS totalQuantity
+    FROM operations o
+    LEFT JOIN locations src ON src.id = o.source_location_id
+    LEFT JOIN locations dest ON dest.id = o.destination_location_id
+    LEFT JOIN operation_lines ol ON ol.operation_id = o.id
+    WHERE o.id = ? GROUP BY o.id
+  `,
+    )
+    .get(id);
+  if (!operation) {
+    return res.status(404).json({ error: "Operation not found." });
+  }
+
+  const lines = db
+    .prepare(
+      `
+    SELECT ol.id, p.id AS productId, p.name AS product, p.sku, p.unit,
+      ol.quantity, ol.counted_quantity AS countedQuantity
+    FROM operation_lines ol
+    JOIN products p ON p.id = ol.product_id
+    WHERE ol.operation_id = ? ORDER BY ol.id
+  `,
+    )
+    .all(id);
+  res.json({ ...(operation as object), lines });
 });
 
 app.post("/api/operations", (req, res) => {
@@ -313,17 +390,16 @@ app.post("/api/operations", (req, res) => {
 app.patch("/api/operations/:id/status", (req, res) => {
   const id = z.coerce.number().int().positive().parse(req.params.id);
   const status = z
-    .enum(["draft", "waiting", "ready", "canceled"])
+    .enum(["waiting", "ready", "canceled"])
     .parse(req.body.status);
-  const result = db
-    .prepare(
-      "UPDATE operations SET status = ? WHERE id = ? AND status != 'done'",
-    )
-    .run(status, id);
-  if (!result.changes)
-    return res
-      .status(404)
-      .json({ error: "Operation not found or already completed." });
+  const operation = db
+    .prepare("SELECT type, status FROM operations WHERE id = ?")
+    .get(id) as { type: OperationType; status: OperationStatus } | undefined;
+  if (!operation) {
+    return res.status(404).json({ error: "Operation not found." });
+  }
+  validateStatusTransition(operation.type, operation.status, status);
+  db.prepare("UPDATE operations SET status = ? WHERE id = ?").run(status, id);
   res.json({ id, status });
 });
 
@@ -335,10 +411,7 @@ app.post("/api/operations/:id/validate", (req, res) => {
       .prepare("SELECT * FROM operations WHERE id = ?")
       .get(operationId) as Record<string, SqlValue> | undefined;
     if (!operation) throw new Error("Operation not found.");
-    if (operation.status === "done")
-      throw new Error("This operation is already validated.");
-    if (operation.status === "canceled")
-      throw new Error("Canceled operations cannot be validated.");
+    validateReadyForCompletion(operation.status as OperationStatus);
 
     const lines = db
       .prepare("SELECT * FROM operation_lines WHERE operation_id = ?")
