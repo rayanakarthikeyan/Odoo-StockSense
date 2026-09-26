@@ -456,12 +456,10 @@ if (process.env.NODE_ENV === "production") {
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (error instanceof z.ZodError)
-    return res
-      .status(400)
-      .json({
-        error: "Please check the submitted values.",
-        details: error.flatten(),
-      });
+    return res.status(400).json({
+      error: "Please check the submitted values.",
+      details: error.flatten(),
+    });
   const message =
     error instanceof Error ? error.message : "Unexpected server error.";
   const isConflict = message.includes("UNIQUE constraint failed");

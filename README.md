@@ -18,6 +18,12 @@ npm run dev
 
 Open `http://localhost:5173`. The API runs on `http://localhost:4000` and creates a local database at `data/stocksense.db` with demo inventory on first launch.
 
+## Engineering guardrails
+
+All work must use dynamic API/database data, robust input validation, responsive and consistent UI patterns, intuitive navigation, local-first behavior, and a collaborative Git workflow. AI-assisted code must be understood, adapted, and verified before it is merged.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development rules and definition-of-done checklist. Pull requests use the same checks through the repository template.
+
 ## Current vertical slice
 
 - Responsive live dashboard with KPI and operation filters
