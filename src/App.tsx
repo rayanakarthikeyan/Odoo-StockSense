@@ -14,6 +14,7 @@ import {
   Menu,
   Package,
   Plus,
+  Printer,
   Search,
   Settings,
   ShieldCheck,
@@ -1079,6 +1080,7 @@ function OperationDetailModal({
       }
       onClose={onClose}
       wide
+      className="operation-detail-modal"
     >
       {!operation ? (
         <div className="detail-loading">
@@ -1096,6 +1098,43 @@ function OperationDetailModal({
           {error && (
             <InlineError message={error} onClose={() => setError("")} />
           )}
+          <div className="print-document-header">
+            <div className="print-brand">
+              <Boxes size={25} />
+              <div>
+                <strong>StockSense</strong>
+                <span>Inventory movement document</span>
+              </div>
+            </div>
+            <div className="print-document-title">
+              <span>{operationDocumentLabel(operation.type)}</span>
+              <strong>{operation.reference}</strong>
+            </div>
+          </div>
+          <div className="print-meta">
+            <div>
+              <span>Partner / context</span>
+              <strong>
+                {operation.partner || operationContext(operation.type)}
+              </strong>
+            </div>
+            <div>
+              <span>Route</span>
+              <strong>{routeLabel(operation)}</strong>
+            </div>
+            <div>
+              <span>Scheduled</span>
+              <strong>{formatDate(operation.scheduledAt)}</strong>
+            </div>
+            <div>
+              <span>Completed</span>
+              <strong>
+                {operation.completedAt
+                  ? formatDate(operation.completedAt)
+                  : "Not completed"}
+              </strong>
+            </div>
+          </div>
           <div className="detail-summary">
             <div>
               <span>Status</span>
@@ -1170,6 +1209,19 @@ function OperationDetailModal({
             </div>
           )}
 
+          <div className="print-signatures">
+            <div>
+              <span>Prepared by</span>
+              <i />
+              <strong>Inventory manager</strong>
+            </div>
+            <div>
+              <span>Received / approved by</span>
+              <i />
+              <strong>Name and signature</strong>
+            </div>
+          </div>
+
           <div className="detail-actions">
             {operation.status !== "done" && operation.status !== "canceled" && (
               <button
@@ -1189,6 +1241,16 @@ function OperationDetailModal({
               >
                 Close
               </button>
+              {operation.status === "done" && (
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={() => window.print()}
+                >
+                  <Printer size={16} /> Print{" "}
+                  {operationDocumentLabel(operation.type)}
+                </button>
+              )}
               {operation.status === "ready" && (
                 <button
                   type="button"
@@ -1234,6 +1296,15 @@ function workflowActionLabel(operation: Operation) {
   if (next === "waiting") return "Start availability check";
   if (next === "ready") return "Mark as ready";
   return "Validate movement";
+}
+
+function operationDocumentLabel(type: OperationType) {
+  return {
+    receipt: "goods receipt",
+    delivery: "delivery slip",
+    transfer: "transfer slip",
+    adjustment: "adjustment report",
+  }[type];
 }
 
 interface LedgerRow {
@@ -1474,12 +1545,14 @@ function Modal({
   onClose,
   children,
   wide = false,
+  className = "",
 }: {
   title: string;
   description: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  className?: string;
 }) {
   return (
     <div className="modal-layer">
@@ -1489,7 +1562,7 @@ function Modal({
         aria-label="Close modal"
       />
       <section
-        className={`modal ${wide ? "modal-wide" : ""}`}
+        className={`modal ${wide ? "modal-wide" : ""} ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"

@@ -32,6 +32,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development rules and de
 - Multi-line operation editor with duplicate-product prevention
 - Searchable operation queue with enforced workflow transitions
 - Operation detail view with complete product-line context
+- Printable completed-operation documents with signature fields
 - Atomic operation validation with negative-stock protection
 - Immutable stock movement ledger
 - Local SQLite persistence and production build support

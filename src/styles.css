@@ -984,6 +984,11 @@ td small {
 .operation-detail {
   padding: 20px 24px 24px;
 }
+.print-document-header,
+.print-meta,
+.print-signatures {
+  display: none;
+}
 .detail-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1289,5 +1294,216 @@ td small {
   }
   .operation-lines-heading .button {
     width: 100%;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .operation-detail-modal,
+  .operation-detail-modal * {
+    visibility: visible;
+  }
+
+  .modal-layer {
+    position: static;
+    display: block;
+    padding: 0;
+  }
+
+  .operation-detail-modal {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    color: #17191d;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .modal-backdrop,
+  .operation-detail-modal .modal-head,
+  .operation-detail-modal .detail-summary,
+  .operation-detail-modal .detail-actions,
+  .operation-detail-modal .inline-error,
+  .operation-detail-modal .detail-section-heading .count-badge {
+    display: none !important;
+  }
+
+  .operation-detail {
+    padding: 0;
+  }
+
+  .print-document-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 18px;
+    border-bottom: 2px solid #24272c;
+  }
+
+  .print-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .print-brand strong,
+  .print-brand span,
+  .print-document-title span,
+  .print-document-title strong {
+    display: block;
+  }
+
+  .print-brand strong {
+    font-size: 17px;
+  }
+
+  .print-brand span {
+    margin-top: 2px;
+    color: #555b63;
+    font-size: 9px;
+  }
+
+  .print-document-title {
+    text-align: right;
+  }
+
+  .print-document-title span {
+    color: #555b63;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .print-document-title strong {
+    margin-top: 5px;
+    font-size: 18px;
+  }
+
+  .print-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    margin: 20px 0 24px;
+    border: 1px solid #d8dade;
+  }
+
+  .print-meta > div {
+    padding: 10px 12px;
+    border-right: 1px solid #d8dade;
+    border-bottom: 1px solid #d8dade;
+  }
+
+  .print-meta > div:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .print-meta > div:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  .print-meta span,
+  .print-meta strong {
+    display: block;
+  }
+
+  .print-meta span {
+    color: #5f656d;
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .print-meta strong {
+    margin-top: 4px;
+    font-size: 10px;
+  }
+
+  .detail-lines {
+    overflow: visible;
+    border-color: #cfd2d7;
+    border-radius: 0;
+  }
+
+  .detail-section-heading {
+    padding: 11px 12px;
+    border-bottom: 1px solid #cfd2d7;
+  }
+
+  .detail-section-heading h3 {
+    font-size: 12px;
+  }
+
+  .operation-detail-modal .table-scroll {
+    overflow: visible;
+  }
+
+  .operation-detail-modal table {
+    font-size: 10px;
+  }
+
+  .operation-detail-modal th {
+    color: #343940;
+    background: #f1f2f4;
+    border-color: #cfd2d7;
+  }
+
+  .operation-detail-modal td {
+    color: #343940;
+    border-color: #dfe1e4;
+  }
+
+  .detail-notes {
+    margin-top: 18px;
+    color: #343940;
+    border: 1px solid #d8dade;
+    border-radius: 0;
+    background: #fff;
+  }
+
+  .print-signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 54px;
+    margin-top: 72px;
+  }
+
+  .print-signatures span,
+  .print-signatures strong {
+    display: block;
+  }
+
+  .print-signatures span {
+    color: #555b63;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .print-signatures i {
+    display: block;
+    height: 44px;
+    border-bottom: 1px solid #4a4f55;
+  }
+
+  .print-signatures strong {
+    margin-top: 6px;
+    color: #555b63;
+    font-size: 8px;
+    font-weight: 500;
   }
 }
