@@ -1,12 +1,12 @@
 # StockSense
 
-StockSense is a local-first inventory management system for receipts, deliveries, internal transfers, stock adjustments, low-stock alerts, and a complete stock ledger.
+StockSense is an inventory management system for receipts, deliveries, internal transfers, stock adjustments, low-stock alerts, and a complete stock ledger. It runs against local SQLite during development and Turso in production.
 
 ## Stack
 
 - React + TypeScript + Vite
 - Express API
-- SQLite with transactional stock updates
+- libSQL/SQLite with transactional stock updates
 - Zod validation
 
 ## Run locally
@@ -17,6 +17,15 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. The API runs on `http://localhost:4000` and creates a local database at `data/stocksense.db` with demo inventory on first launch.
+
+## Deploy to Vercel
+
+1. Create a Turso database and database token.
+2. Import this GitHub repository into Vercel.
+3. Add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` to the Vercel project environment variables.
+4. Deploy. The first API request creates the schema and demo inventory automatically.
+
+The included `vercel.json` builds the Vite frontend, sends `/api/*` requests to the Express function, and supports React Router deep links. Never commit a real database token; copy `.env.example` to `.env` only for local hosted-database testing.
 
 ## Engineering guardrails
 
@@ -35,7 +44,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development rules and de
 - Printable completed-operation documents with signature fields
 - Atomic operation validation with negative-stock protection
 - Immutable stock movement ledger
-- Local SQLite persistence and production build support
+- Local SQLite persistence and Turso-backed Vercel deployment support
 
 ## Next milestones
 
